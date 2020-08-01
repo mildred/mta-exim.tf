@@ -22,6 +22,8 @@ Requirements
   providers.
 - [force-bind](https://github.com/mildred/force-bind-seccomp) needs to be
   installed separately in `/usr/local/bin/force-bind`
+- Debian host as several specificities are hardcoded until portability is
+  implemented.
 
 Configuration
 -------------
