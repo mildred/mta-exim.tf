@@ -24,6 +24,7 @@ Requirements
   installed separately in `/usr/local/bin/force-bind`
 - Debian host as several specificities are hardcoded until portability is
   implemented.
+- certificates for fqdn installed in standard let's encrypt location
 
 Configuration
 -------------
