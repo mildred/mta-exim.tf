@@ -14,6 +14,15 @@ Features include:
 - Only accepting e-mails for one of the local or relayed domains
 - accept deliveries using SMTP or LMTP
 
+Requirements
+------------
+
+- [`terraform-provider-sys`](https://github.com/mildred/terraform-provider-sys)
+  needs to be manually installed until i split this provider into better suited
+  providers.
+- [force-bind](https://github.com/mildred/force-bind-seccomp) needs to be
+  installed separately in `/usr/local/bin/force-bind`
+
 Configuration
 -------------
 

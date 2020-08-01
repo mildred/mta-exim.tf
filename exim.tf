@@ -23,6 +23,7 @@ variable "sd_prefix" {
 
 locals {
   unit_name = "${var.sd_prefix}mta-exim"
+  unit_name_un = replace(local.unit_name, "-", "_")
 }
 
 module "local_domains" {
@@ -49,8 +50,51 @@ resource "sys_package" "exim" {
 }
 
 resource "sys_file" "exim_conf" {
-  filename = "/etc/mta-exim.conf"
-  content  = file("${path.module}/mta-exim.conf")
+  filename = "/etc/${local.unit_name}.conf"
+  content  = <<CONFIG
+
+primary_hostname = ${var.fqdn}
+exim_user        = UID
+exim_group       = GID
+spool_directory  = /var/spool/${local.unit_name}
+tls_certificate  = /etc/letsencrypt/live/${var.fqdn}/fullchain.pem
+tls_privatekey   = /etc/letsencrypt/live/${var.fqdn}/privkey.pem
+
+.ifdef BIND_PORTS
+daemon_smtp_ports = <, BIND_PORTS
+.else
+daemon_smtp_ports = <, 25
+.endif
+
+.ifdef BIND_ADDRS
+local_interfaces  = <, BIND_ADDRS
+.endif
+
+domainlist local_domains    = ${var.fqdn} : localhost : localhost.localdomain
+domainlist relay_to_domains =
+hostlist   relay_from_hosts = localhost
+
+${file("${path.module}/mta-exim.conf")}
+
+CONFIG
+}
+
+resource "sys_file" "exim_socket" {
+  filename = "/etc/systemd/system/${local.unit_name}.socket"
+  content = <<CONF
+[Unit]
+Description=EXIM SMTP server
+After=network.target
+Conflicts=exim4.service
+
+[Socket]
+ListenStream=[::]:25
+BindIPv6Only=both
+
+[Install]
+WantedBy=multi-user.target
+
+CONF
 }
 
 resource "sys_file" "exim_service" {
@@ -67,21 +111,17 @@ After=addr@${local.unit_name}.service
 EnvironmentFile=/run/addr/${local.unit_name}.env
 User=Debian-exim
 Group=Debian-exim
-#CapabilityBoundingSet=CAP_NET_BIND_SERVICE
-#AmbientCapabilities=CAP_NET_BIND_SERVICE
+ExecStartPre=+/usr/bin/mkdir -p /var/spool/${local.unit_name}
+ExecStartPre=+/usr/bin/chown Debian-exim:Debian-exim /var/spool/${local.unit_name}
 ExecStart=/bin/sh -c ' \
+  exec /usr/local/bin/force-bind \
+  -m :25=sd-0 \
   exec /usr/sbin/exim4 \
-  -C ${sys_file.exim_conf.filename} \
-  -DCONF_ROUTERS=${sys_file.exim_routers_conf.filename} \
-  -DCONF_TRANSPORTS=${sys_file.exim_transports_conf.filename} \
-  -DSMTP_PORT=1025 \
-  -DBIND_ADDRS=$${HOST_${local.unit_name}4},$${HOST_${local.unit_name}6} \
-  -DFQDN=${var.fqdn} \
-  -DSPOOL=/var/spool/exim4 \
-  -DTLS_CERT=/etc/letsencrypt/live/${var.fqdn}/fullchain.pem \
-  -DTLS_SKEY=/etc/letsencrypt/live/${var.fqdn}/privkey.pem \
-  -DUID=$(id -u Debian-exim) -DGID=$(id -g Debian-exim) \
-  -bdf -q1h \
+    -C ${sys_file.exim_conf.filename} \
+    -DCONF_ROUTERS=${sys_file.exim_routers_conf.filename} \
+    -DCONF_TRANSPORTS=${sys_file.exim_transports_conf.filename} \
+    -DUID=$(id -u Debian-exim) -DGID=$(id -g Debian-exim) \
+    -bdf -q1h \
 '
 
 CONF
@@ -94,21 +134,25 @@ resource "sys_systemd_unit" "exim4" {
 }
 
 resource "sys_systemd_unit" "exim" {
-  name = "${local.unit_name}.service"
-  enable = false
+  name = "${local.unit_name}.socket"
+  enable = true
+  start  = true
   restart_on = {
-    unit = sys_file.exim_service.id
+    service_unit = sys_file.exim_service.id
+    socket_unit  = sys_file.exim_socket.id
   }
   depends_on = [ sys_systemd_unit.exim4 ]
 }
+
+/*
 
 module "exim_proxy_service" {
   source    = "../sd-proxy.tf"
   unit_name = local.unit_name
   bind4     = "0.0.0.0"
   bind6     = "[::]"
-  host4     = "$${HOST_${local.unit_name}4}"
-  host6     = "[$${HOST_${local.unit_name}6}]"
+  host4     = "$${HOST_${local.unit_name_un}4}"
+  host6     = "[$${HOST_${local.unit_name_un}6}]"
   ports = {
     smtp4 = [25, 1025]
     smtp6 = [25, 1025]
@@ -143,3 +187,4 @@ resource "sys_systemd_unit" "exim_proxy" {
   depends_on = [ sys_systemd_unit.exim ]
 }
 
+*/
