@@ -105,8 +105,8 @@ resource "sys_file" "exim_service" {
 Description=EXIM SMTP server
 After=network.target
 Conflicts=exim4.service
-Requires=addr@${local.unit_name}.service
-After=addr@${local.unit_name}.service
+Requires=${local.unit_name}.socket
+After=${local.unit_name}.socket
 
 [Service]
 EnvironmentFile=/run/addr/${local.unit_name}.env
